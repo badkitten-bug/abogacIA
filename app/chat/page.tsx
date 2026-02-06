@@ -146,7 +146,7 @@ export default function ChatPage() {
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
         role: 'assistant',
-        content: 'Lo siento, hubo un error. Verifica que el backend esté corriendo y tengas la API key de Groq configurada.',
+        content: 'Lo siento, hubo un error al procesar tu consulta. Por favor, intenta de nuevo en unos momentos.',
         timestamp: new Date()
       }])
     } finally {

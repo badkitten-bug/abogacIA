@@ -14,9 +14,12 @@ import {
   BarChart3,
   AlertCircle,
   CheckCircle,
-  ChevronDown
+  ChevronDown,
+  Settings,
+  Key
 } from 'lucide-react'
 import Link from 'next/link'
+
 
 // API URL
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -79,7 +82,7 @@ const contentTypes = [
 ]
 
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const [activeTab, setActiveTab] = useState('content') // Default to content
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [contents, setContents] = useState<LegalContent[]>([])
@@ -88,6 +91,11 @@ export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  // Config State
+  const [apiKey, setApiKey] = useState('')
+  const [configStatus, setConfigStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
+
 
   // Form para nuevo contenido
   const [newContent, setNewContent] = useState({
@@ -157,9 +165,9 @@ export default function AdminPage() {
       const response = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
         },
-        body: new URLSearchParams({
+        body: JSON.stringify({
           username: loginForm.email,
           password: loginForm.password,
         }),
@@ -226,14 +234,20 @@ export default function AdminPage() {
     setSuccess(null)
 
     try {
-      const response = await fetch(`${API_URL}/api/legal-content/`, {
+      const response = await fetch(`${API_URL}/api/admin/laws`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          // 'Authorization': `Bearer ${token}`, // Pass token if auth enabled later
         },
-        body: JSON.stringify(newContent),
+        body: JSON.stringify({
+           title: newContent.title,
+           content: newContent.content,
+           category: newContent.category,
+           source: newContent.source || 'Manual Admin Upload' 
+        }),
       })
+
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -364,7 +378,32 @@ export default function AdminPage() {
     }
   }
 
-  // Login Screen
+  // Update API Key
+  const handleUpdateApiKey = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setConfigStatus('saving')
+    try {
+      const response = await fetch(`${API_URL}/api/chat/config`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ apiKey }),
+      })
+      
+      if (response.ok) {
+        setConfigStatus('success')
+        setApiKey('') // Clear for security
+        setTimeout(() => setConfigStatus('idle'), 3000)
+      } else {
+        throw new Error('Failed to update Key')
+      }
+    } catch (err) {
+      setConfigStatus('error')
+    }
+  }
+
+  // Login Screen - Authentication Check
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center p-4">
@@ -448,8 +487,10 @@ export default function AdminPage() {
           {[
             { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
             { id: 'content', icon: FileText, label: 'Contenido Legal' },
-            { id: 'lawyers', icon: Users, label: 'Abogados' },
-            { id: 'firms', icon: Building2, label: 'Estudios' },
+            { id: 'config', icon: Settings, label: 'Configuración' },
+            // { id: 'lawyers', icon: Users, label: 'Abogados' },
+            // { id: 'firms', icon: Building2, label: 'Estudios' },
+
           ].map((item) => (
             <button
               key={item.id}
@@ -700,6 +741,62 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* Config Tab */}
+        {activeTab === 'config' && (
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">Configuración del Sistema</h2>
+            
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 max-w-2xl">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600">
+                  <Key className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-800">API Key de Groq</h3>
+                  <p className="text-sm text-gray-500">Actualiza la llave para el motor de IA.</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleUpdateApiKey} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nueva API Key
+                  </label>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono"
+                    placeholder="gsk_..."
+                    required
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                   <button
+                    type="submit"
+                    disabled={configStatus === 'saving'}
+                    className={`px-6 py-2 rounded-lg font-medium text-white transition-colors ${
+                      configStatus === 'saving' ? 'bg-gray-400' : 
+                      configStatus === 'success' ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
+                  >
+                    {configStatus === 'saving' ? 'Guardando...' : 
+                     configStatus === 'success' ? '¡Actualizado!' : 
+                     configStatus === 'error' ? 'Error' : 'Actualizar Key'}
+                  </button>
+                  {configStatus === 'success' && (
+                    <span className="text-green-600 text-sm font-medium flex items-center gap-1">
+                      <CheckCircle className="w-4 h-4" /> Guardado correctamente
+                    </span>
+                  )}
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+
         {/* Add Content Modal */}
         {showAddModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -722,7 +819,7 @@ export default function AdminPage() {
                     <select
                       value={newContent.category}
                       onChange={(e) => setNewContent({ ...newContent, category: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       required
                     >
                       {categories.map((cat) => (
@@ -737,7 +834,7 @@ export default function AdminPage() {
                     <select
                       value={newContent.content_type}
                       onChange={(e) => setNewContent({ ...newContent, content_type: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       required
                     >
                       {contentTypes.map((type) => (
@@ -755,7 +852,7 @@ export default function AdminPage() {
                     type="text"
                     value={newContent.title}
                     onChange={(e) => setNewContent({ ...newContent, title: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                     placeholder="Ej: Código Civil - Artículo 1969"
                     required
                   />
@@ -770,7 +867,7 @@ export default function AdminPage() {
                       type="text"
                       value={newContent.number}
                       onChange={(e) => setNewContent({ ...newContent, number: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="Ej: 29783, Art. 1969"
                     />
                   </div>
@@ -782,7 +879,7 @@ export default function AdminPage() {
                       type="text"
                       value={newContent.source}
                       onChange={(e) => setNewContent({ ...newContent, source: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="Ej: Diario El Peruano"
                     />
                   </div>
@@ -795,7 +892,7 @@ export default function AdminPage() {
                   <textarea
                     value={newContent.content}
                     onChange={(e) => setNewContent({ ...newContent, content: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 min-h-[200px]"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 min-h-[200px] text-gray-900 bg-white"
                     placeholder="Pegue aquí el texto completo de la ley, artículo o norma..."
                     required
                   />
@@ -809,7 +906,7 @@ export default function AdminPage() {
                     type="text"
                     value={newContent.keywords}
                     onChange={(e) => setNewContent({ ...newContent, keywords: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                     placeholder="Separadas por coma: contrato, obligaciones, daños"
                   />
                 </div>
@@ -821,7 +918,7 @@ export default function AdminPage() {
                   <textarea
                     value={newContent.notes}
                     onChange={(e) => setNewContent({ ...newContent, notes: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                     placeholder="Notas internas sobre este contenido..."
                     rows={2}
                   />
@@ -870,7 +967,7 @@ export default function AdminPage() {
                       type="text"
                       value={newLawyer.full_name}
                       onChange={(e) => setNewLawyer({ ...newLawyer, full_name: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="Ej: Dr. Juan Pérez García"
                       required
                     />
@@ -883,7 +980,7 @@ export default function AdminPage() {
                       type="email"
                       value={newLawyer.email}
                       onChange={(e) => setNewLawyer({ ...newLawyer, email: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="abogado@email.com"
                       required
                     />
@@ -896,7 +993,7 @@ export default function AdminPage() {
                       type="tel"
                       value={newLawyer.phone}
                       onChange={(e) => setNewLawyer({ ...newLawyer, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="+51 999 999 999"
                     />
                   </div>
@@ -908,7 +1005,7 @@ export default function AdminPage() {
                       type="text"
                       value={newLawyer.colegio_abogados}
                       onChange={(e) => setNewLawyer({ ...newLawyer, colegio_abogados: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="CAL, CAA, etc."
                       required
                     />
@@ -921,7 +1018,7 @@ export default function AdminPage() {
                       type="text"
                       value={newLawyer.numero_colegiatura}
                       onChange={(e) => setNewLawyer({ ...newLawyer, numero_colegiatura: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="12345"
                       required
                     />
@@ -934,7 +1031,7 @@ export default function AdminPage() {
                       type="number"
                       value={newLawyer.years_experience}
                       onChange={(e) => setNewLawyer({ ...newLawyer, years_experience: parseInt(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       min="0"
                     />
                   </div>
@@ -946,7 +1043,7 @@ export default function AdminPage() {
                       type="text"
                       value={newLawyer.city}
                       onChange={(e) => setNewLawyer({ ...newLawyer, city: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="Lima"
                     />
                   </div>
@@ -958,7 +1055,7 @@ export default function AdminPage() {
                       type="text"
                       value={newLawyer.specialties}
                       onChange={(e) => setNewLawyer({ ...newLawyer, specialties: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="Civil, Penal, Laboral (separadas por coma)"
                     />
                   </div>
@@ -970,7 +1067,7 @@ export default function AdminPage() {
                       type="text"
                       value={newLawyer.address}
                       onChange={(e) => setNewLawyer({ ...newLawyer, address: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="Av. Principal 123, Miraflores"
                     />
                   </div>
@@ -981,7 +1078,7 @@ export default function AdminPage() {
                     <textarea
                       value={newLawyer.bio}
                       onChange={(e) => setNewLawyer({ ...newLawyer, bio: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="Breve descripción del abogado..."
                       rows={3}
                     />
@@ -1031,7 +1128,7 @@ export default function AdminPage() {
                       type="text"
                       value={newFirm.name}
                       onChange={(e) => setNewFirm({ ...newFirm, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="Ej: Estudio Jurídico Pérez & Asociados"
                       required
                     />
@@ -1044,7 +1141,7 @@ export default function AdminPage() {
                       type="email"
                       value={newFirm.email}
                       onChange={(e) => setNewFirm({ ...newFirm, email: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="contacto@estudio.com"
                       required
                     />
@@ -1057,7 +1154,7 @@ export default function AdminPage() {
                       type="tel"
                       value={newFirm.phone}
                       onChange={(e) => setNewFirm({ ...newFirm, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="+51 1 234 5678"
                     />
                   </div>
@@ -1069,7 +1166,7 @@ export default function AdminPage() {
                       type="url"
                       value={newFirm.website}
                       onChange={(e) => setNewFirm({ ...newFirm, website: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="https://www.estudio.com"
                     />
                   </div>
@@ -1081,7 +1178,7 @@ export default function AdminPage() {
                       type="text"
                       value={newFirm.city}
                       onChange={(e) => setNewFirm({ ...newFirm, city: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="Lima"
                     />
                   </div>
@@ -1093,7 +1190,7 @@ export default function AdminPage() {
                       type="text"
                       value={newFirm.specialties}
                       onChange={(e) => setNewFirm({ ...newFirm, specialties: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="Corporativo, Tributario, Laboral (separadas por coma)"
                     />
                   </div>
@@ -1105,7 +1202,7 @@ export default function AdminPage() {
                       type="text"
                       value={newFirm.address}
                       onChange={(e) => setNewFirm({ ...newFirm, address: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="Av. Javier Prado 1234, San Isidro"
                     />
                   </div>
@@ -1116,7 +1213,7 @@ export default function AdminPage() {
                     <textarea
                       value={newFirm.description}
                       onChange={(e) => setNewFirm({ ...newFirm, description: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       placeholder="Descripción del estudio jurídico..."
                       rows={3}
                     />
