@@ -27,6 +27,7 @@ import {
   ChevronLeft
 } from 'lucide-react'
 import Link from 'next/link'
+import ReactMarkdown from 'react-markdown'
 
 // Tipos
 interface SourceReference {
@@ -50,6 +51,7 @@ interface ChatSession {
   title: string
   timestamp: Date
   preview: string
+  messages?: Message[]
 }
 
 // Categorías legales
@@ -77,20 +79,101 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
-  const [sessionId, setSessionId] = useState<number | null>(null)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [chatHistory, setChatHistory] = useState<ChatSession[]>([
-    { id: '1', title: 'Consulta sobre despido', timestamp: new Date(), preview: '¿Cuáles son mis derechos si me despiden...' },
-    { id: '2', title: 'Pensión alimenticia', timestamp: new Date(Date.now() - 86400000), preview: '¿Cómo se calcula la pensión de alimentos...' },
-  ])
+  const [chatHistory, setChatHistory] = useState<ChatSession[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  const STORAGE_KEY = 'abogacia_chat_sessions'
+
+  // Load sessions from localStorage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      try {
+        const sessions = JSON.parse(stored)
+        setChatHistory(sessions.map((s: any) => ({
+          ...s,
+          timestamp: new Date(s.timestamp)
+        })))
+      } catch (e) {
+        console.error('Error loading chat history:', e)
+      }
+    }
+  }, [])
+
+  // Save sessions to localStorage whenever chatHistory changes
+  useEffect(() => {
+    if (chatHistory.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(chatHistory))
+    }
+  }, [chatHistory])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Save current session messages
+  const saveCurrentSession = (newMessages: Message[]) => {
+    if (newMessages.length === 0) return
+
+    const sessionId = currentSessionId || `session_${Date.now()}`
+    if (!currentSessionId) {
+      setCurrentSessionId(sessionId)
+    }
+
+    // Generate title from first user message
+    const firstUserMsg = newMessages.find(m => m.role === 'user')
+    const title = firstUserMsg 
+      ? firstUserMsg.content.slice(0, 40) + (firstUserMsg.content.length > 40 ? '...' : '')
+      : 'Nueva consulta'
+
+    const preview = newMessages[newMessages.length - 1].content.slice(0, 50) + '...'
+
+    setChatHistory(prev => {
+      const existing = prev.find(s => s.id === sessionId)
+      if (existing) {
+        // Update existing session
+        return prev.map(s => s.id === sessionId 
+          ? { ...s, preview, timestamp: new Date(), messages: newMessages }
+          : s
+        )
+      } else {
+        // Create new session
+        return [
+          { id: sessionId, title, preview, timestamp: new Date(), messages: newMessages },
+          ...prev
+        ]
+      }
+    })
+  }
+
+  // Load a session from history
+  const loadSession = (session: ChatSession) => {
+    setCurrentSessionId(session.id)
+    setMessages(session.messages || [])
+  }
+
+  // Delete a session
+  const deleteSession = (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setChatHistory(prev => prev.filter(s => s.id !== sessionId))
+    
+    // Update localStorage immediately
+    const newHistory = chatHistory.filter(s => s.id !== sessionId)
+    if (newHistory.length === 0) {
+      localStorage.removeItem(STORAGE_KEY)
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory))
+    }
+
+    // If we deleted the current session, start fresh
+    if (sessionId === currentSessionId) {
+      startNewChat()
+    }
+  }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputValue(e.target.value)
@@ -108,7 +191,8 @@ export default function ChatPage() {
       content: text,
       timestamp: new Date()
     }
-    setMessages(prev => [...prev, userMessage])
+    const newMessages = [...messages, userMessage]
+    setMessages(newMessages)
     setInputValue('')
     setIsLoading(true)
 
@@ -122,7 +206,7 @@ export default function ChatPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          session_id: sessionId,
+          session_id: currentSessionId,
           category: selectedCategory
         })
       })
@@ -130,7 +214,6 @@ export default function ChatPage() {
       if (!response.ok) throw new Error('Error en la respuesta')
 
       const data = await response.json()
-      if (data.session_id) setSessionId(data.session_id)
 
       const assistantMessage: Message = {
         id: data.message_id || Date.now() + 1,
@@ -139,16 +222,23 @@ export default function ChatPage() {
         sources: data.sources || [],
         timestamp: new Date()
       }
-      setMessages(prev => [...prev, assistantMessage])
+      const finalMessages = [...newMessages, assistantMessage]
+      setMessages(finalMessages)
+      
+      // Save to localStorage
+      saveCurrentSession(finalMessages)
 
     } catch (error) {
       console.error('Error:', error)
-      setMessages(prev => [...prev, {
+      const errorMessage: Message = {
         id: Date.now() + 1,
         role: 'assistant',
         content: 'Lo siento, hubo un error al procesar tu consulta. Por favor, intenta de nuevo en unos momentos.',
         timestamp: new Date()
-      }])
+      }
+      const finalMessages = [...newMessages, errorMessage]
+      setMessages(finalMessages)
+      saveCurrentSession(finalMessages)
     } finally {
       setIsLoading(false)
     }
@@ -163,9 +253,10 @@ export default function ChatPage() {
 
   const startNewChat = () => {
     setMessages([])
-    setSessionId(null)
+    setCurrentSessionId(null)
     setSelectedCategory(null)
   }
+
 
   return (
     <div className="h-screen flex bg-slate-50">
@@ -190,7 +281,10 @@ export default function ChatPage() {
           {chatHistory.map((chat) => (
             <button
               key={chat.id}
-              className="w-full text-left px-3 py-3 rounded-lg hover:bg-slate-800 transition-colors group"
+              onClick={() => loadSession(chat)}
+              className={`w-full text-left px-3 py-3 rounded-lg transition-colors group ${
+                currentSessionId === chat.id ? 'bg-slate-700' : 'hover:bg-slate-800'
+              }`}
             >
               <div className="flex items-center gap-3">
                 <MessageSquare className="w-4 h-4 text-slate-500 flex-shrink-0" />
@@ -198,10 +292,18 @@ export default function ChatPage() {
                   <p className="text-sm text-slate-200 truncate">{chat.title}</p>
                   <p className="text-xs text-slate-500 truncate">{chat.preview}</p>
                 </div>
-                <Trash2 className="w-4 h-4 text-slate-600 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all" />
+                <Trash2 
+                  onClick={(e) => deleteSession(chat.id, e)}
+                  className="w-4 h-4 text-slate-600 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all cursor-pointer" 
+                />
               </div>
             </button>
           ))}
+          {chatHistory.length === 0 && (
+            <p className="text-xs text-slate-600 text-center py-4">
+              No hay conversaciones guardadas
+            </p>
+          )}
         </div>
 
         {/* Sidebar Footer */}
@@ -349,7 +451,13 @@ export default function ChatPage() {
                           ? 'bg-amber-500 text-white'
                           : 'bg-white border border-slate-200 text-slate-700'
                       }`}>
-                        <p className="whitespace-pre-wrap leading-relaxed text-[15px]">{message.content}</p>
+                        {message.role === 'assistant' ? (
+                          <div className="prose prose-sm prose-slate max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-headings:my-2 prose-strong:text-slate-800">
+                            <ReactMarkdown>{message.content}</ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap leading-relaxed text-[15px]">{message.content}</p>
+                        )}
                       </div>
                       
                       {message.sources && message.sources.length > 0 && (
