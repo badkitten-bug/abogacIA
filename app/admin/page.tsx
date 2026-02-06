@@ -294,6 +294,30 @@ export default function AdminPage() {
     }
   }
 
+  // Delete Content
+  const handleDeleteContent = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('¿Está seguro de eliminar este contenido?')) return
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/laws/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setContents(prev => prev.filter(c => c.id !== id))
+        setSuccess('Contenido eliminado exitosamente')
+      } else {
+        throw new Error('Error al eliminar')
+      }
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
+
   // Create Lawyer
   const handleCreateLawyer = async (e: React.FormEvent) => {
     e.preventDefault()
