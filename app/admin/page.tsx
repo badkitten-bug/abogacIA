@@ -213,7 +213,7 @@ export default function AdminPage() {
   // Fetch Contents
   const fetchContents = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/legal-content/`, {
+      const response = await fetch(`${API_URL}/api/admin/laws`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -244,6 +244,8 @@ export default function AdminPage() {
            title: newContent.title,
            content: newContent.content,
            category: newContent.category,
+           content_type: newContent.content_type,
+           number: newContent.number,
            source: newContent.source || 'Manual Admin Upload' 
         }),
       })
@@ -642,7 +644,10 @@ export default function AdminPage() {
                 <tbody className="divide-y divide-gray-200">
                   {contents.map((content) => (
                     <tr key={content.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm text-gray-800">{content.title}</td>
+                      <td className="px-6 py-4 text-sm text-gray-800">
+                        {content.title}
+                        <div className="text-xs text-gray-400 mt-1">{new Date(content.created_at).toLocaleDateString()}</div>
+                      </td>
                       <td className="px-6 py-4">
                         <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full capitalize">
                           {content.category}
@@ -663,7 +668,7 @@ export default function AdminPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 flex gap-2">
                         {!content.is_indexed && (
                           <button
                             onClick={() => handleIndexContent(content.id)}
@@ -672,6 +677,12 @@ export default function AdminPage() {
                             Indexar
                           </button>
                         )}
+                        <button
+                          onClick={(e) => handleDeleteContent(content.id, e)}
+                          className="text-red-600 hover:text-red-800 text-sm font-medium"
+                        >
+                          Eliminar
+                        </button>
                       </td>
                     </tr>
                   ))}
