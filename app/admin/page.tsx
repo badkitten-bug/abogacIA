@@ -277,7 +277,7 @@ export default function AdminPage() {
   // Index Content
   const handleIndexContent = async (contentId: number) => {
     try {
-      const response = await fetch(`${API_URL}/api/legal-content/${contentId}/index`, {
+      const response = await fetch(`${API_URL}/api/admin/laws/${contentId}/index`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
