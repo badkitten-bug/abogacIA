@@ -92,7 +92,16 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  // Config State
+  // Search and Filters
+  const [searchTerm, setSearchTerm] = useState('')
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 8
+
+  // Auth State
   const [apiKey, setApiKey] = useState('')
   const [configStatus, setConfigStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
 
@@ -147,6 +156,11 @@ export default function AdminPage() {
       setIsAuthenticated(true)
     }
   }, [])
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, typeFilter, categoryFilter])
 
   // Cargar datos cuando está autenticado
   useEffect(() => {
@@ -652,6 +666,50 @@ export default function AdminPage() {
               </button>
             </div>
 
+            {/* Filters and Search */ }
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 flex flex-wrap gap-4 items-center">
+              <div className="flex-1 min-w-[200px]">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por título, número o contenido..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              
+              <div className="min-w-[150px]">
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="all">Todos los Tipos</option>
+                  <option value="ley">Leyes</option>
+                  <option value="norma">Normas</option>
+                  <option value="decreto">Decretos</option>
+                  <option value="jurisprudencia">Jurisprudencia</option>
+                  <option value="otro">Otros</option>
+                </select>
+              </div>
+
+              <div className="min-w-[150px]">
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="all">Todas las Categorías</option>
+                  {categories.map(cat => (
+                    <option key={cat.value} value={cat.value}>{cat.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {/* Content List */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <table className="w-full">
@@ -666,50 +724,151 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {contents.map((content) => (
-                    <tr key={content.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm text-gray-800">
-                        {content.title}
-                        <div className="text-xs text-gray-400 mt-1">{new Date(content.createdAt).toLocaleDateString()}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full capitalize">
-                          {content.category}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 capitalize">{content.content_type}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{content.number || '-'}</td>
-                      <td className="px-6 py-4">
-                        {content.is_indexed ? (
-                          <span className="flex items-center gap-1 text-green-600 text-sm">
-                            <CheckCircle className="w-4 h-4" />
-                            Indexado
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-yellow-600 text-sm">
-                            <AlertCircle className="w-4 h-4" />
-                            Pendiente
-                          </span>
+                  {(() => {
+                    const filtered = contents.filter(content => {
+                      const matchesSearch = (content.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                           content.number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                           content.content_type?.toLowerCase().includes(searchTerm.toLowerCase()));
+                      const matchesType = typeFilter === 'all' || content.content_type === typeFilter;
+                      const matchesCategory = categoryFilter === 'all' || content.category === categoryFilter;
+                      return matchesSearch && matchesType && matchesCategory;
+                    })
+                    
+                    const indexOfLastItem = currentPage * itemsPerPage;
+                    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+                    const currentItems = filtered.slice(indexOfFirstItem, indexOfLastItem);
+                    const totalPages = Math.ceil(filtered.length / itemsPerPage);
+
+                    if (currentItems.length === 0) {
+                      return (
+                         <tr>
+                          <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                            No se encontraron resultados para tu búsqueda.
+                          </td>
+                        </tr>
+                      )
+                    }
+
+                    return (
+                      <>
+                        {currentItems.map((content) => (
+                          <tr key={content.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 text-sm text-gray-800">
+                              {content.title}
+                              <div className="text-xs text-gray-400 mt-1">{new Date(content.createdAt).toLocaleDateString()}</div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full capitalize">
+                                {content.category}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-600 capitalize">
+                              {content.content_type}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-600">
+                              {content.number || '-'}
+                            </td>
+                            <td className="px-6 py-4">
+                              {content.is_indexed ? (
+                                <span className="flex items-center text-green-600 text-xs font-medium">
+                                  <CheckCircle className="w-4 h-4 mr-1" />
+                                  Indexado
+                                </span>
+                              ) : (
+                                <span className="flex items-center text-yellow-600 text-xs font-medium">
+                                  <AlertCircle className="w-4 h-4 mr-1" />
+                                  Pendiente
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-sm font-medium">
+                              <div className="flex space-x-3">
+                                {!content.is_indexed && (
+                                  <button
+                                    onClick={() => handleIndexContent(content.id)}
+                                    className="text-blue-600 hover:text-blue-900 flex items-center"
+                                  >
+                                    Indexar
+                                  </button>
+                                )}
+                                <button
+                                  onClick={(e) => handleDeleteContent(content.id, e)}
+                                  className="text-red-600 hover:text-red-900 flex items-center"
+                                >
+                                  Eliminar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {totalPages > 1 && (
+                          <tr>
+                            <td colSpan={6} className="px-6 py-4">
+                              <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+                                <div className="flex flex-1 justify-between sm:hidden">
+                                  <button
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                  >
+                                    Anterior
+                                  </button>
+                                  <button
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                  >
+                                    Siguiente
+                                  </button>
+                                </div>
+                                <div className="hidden sm:flex flex-1 items-center justify-between">
+                                  <div>
+                                    <p className="text-sm text-gray-700">
+                                      Mostrando <span className="font-medium">{indexOfFirstItem + 1}</span> a <span className="font-medium">{Math.min(indexOfLastItem, filtered.length)}</span> de <span className="font-medium">{filtered.length}</span> resultados
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                                      <button
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        disabled={currentPage === 1}
+                                        className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                                      >
+                                        <span className="sr-only">Anterior</span>
+                                        <ChevronDown className="h-5 w-5 rotate-90" aria-hidden="true" />
+                                      </button>
+                                      {Array.from({ length: totalPages }).map((_, i) => (
+                                        <button
+                                          key={i}
+                                          onClick={() => setCurrentPage(i + 1)}
+                                          aria-current={currentPage === i + 1 ? 'page' : undefined}
+                                          className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
+                                            currentPage === i + 1
+                                              ? 'bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+                                              : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
+                                          }`}
+                                        >
+                                          {i + 1}
+                                        </button>
+                                      ))}
+                                      <button
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage === totalPages}
+                                        className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                                      >
+                                        <span className="sr-only">Siguiente</span>
+                                        <ChevronDown className="h-5 w-5 -rotate-90" aria-hidden="true" />
+                                      </button>
+                                    </nav>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="px-6 py-4 flex gap-2">
-                        {!content.is_indexed && (
-                          <button
-                            onClick={() => handleIndexContent(content.id)}
-                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                          >
-                            Indexar
-                          </button>
-                        )}
-                        <button
-                          onClick={(e) => handleDeleteContent(content.id, e)}
-                          className="text-red-600 hover:text-red-800 text-sm font-medium"
-                        >
-                          Eliminar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                      </>
+                    )
+                  })()}
                 </tbody>
               </table>
 
