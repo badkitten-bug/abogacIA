@@ -53,7 +53,7 @@ interface LegalContent {
   content_type: string
   number: string
   is_indexed: boolean
-  created_at: string
+  createdAt: string
 }
 
 // Categorías y tipos
@@ -220,7 +220,7 @@ export default function AdminPage() {
       })
       if (response.ok) {
         const data = await response.json()
-        setContents(data.items || [])
+        setContents(Array.isArray(data) ? data : data.items || [])
       }
     } catch (err) {
       console.error('Error fetching contents:', err)
@@ -670,7 +670,7 @@ export default function AdminPage() {
                     <tr key={content.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm text-gray-800">
                         {content.title}
-                        <div className="text-xs text-gray-400 mt-1">{new Date(content.created_at).toLocaleDateString()}</div>
+                        <div className="text-xs text-gray-400 mt-1">{new Date(content.createdAt).toLocaleDateString()}</div>
                       </td>
                       <td className="px-6 py-4">
                         <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full capitalize">
